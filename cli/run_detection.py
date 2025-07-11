@@ -6,6 +6,7 @@ from core.rules_engine import evaluate_rules
 from core.alert_manager import record_alert
 
 def main():
+    """Main script for running rules-based detection"""
     # Parse CLI arguments
     parser = argparse.ArgumentParser()
     parser.add_argument('--db-path', default='logtrack.db',
@@ -27,6 +28,7 @@ def main():
         sys.exit(1)
 
     recorded_alerts = []
+
     # Loop alerts -> record_alert
     for alert in triggered_alerts:
         recorded_alerts.append(alert)
