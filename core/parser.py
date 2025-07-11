@@ -1,7 +1,7 @@
 import re
 
 def parse_log_line(log_line: str):
-    '''
+    """
     Parses a raw log line into a structured dictionary of fields.
 
     :param log_line: A single line from the log file
@@ -9,7 +9,7 @@ def parse_log_line(log_line: str):
 
     :returns: A dictionary with extracted fields such as timestamp, service, message, and user (if found)
     :rtype: dict
-    '''
+    """
     # Parse <TIMESTAMP> <SERVICE>: <MESSAGE>
     # Assume format YYYY-MM-DD HH:MM:SS service: message
     timestamp_len = 19  # len("YYYY-MM-DD HH:MM:SS")

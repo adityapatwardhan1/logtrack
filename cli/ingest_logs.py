@@ -6,14 +6,14 @@ from db.init_db import get_db_connection
 
 
 def ingest_log_file(file_path, db_path="logtrack.db"):
-    '''
+    """
     Inserts log entries from file at location specified by file_path into DB at db_path.
 
     :param file_path: Path to the log file to be ingested
     :type file_path: str
     :param db_path: Path to SQLite database file
     :type db_path: str
-    '''
+    """
     if not os.path.exists(file_path):
         print(f'Could not find log file {file_path}, exiting...')
         sys.exit(1)
@@ -45,7 +45,7 @@ def ingest_log_file(file_path, db_path="logtrack.db"):
 
 
 def main():
-    '''Main logic for CLI application'''
+    """Main logic for CLI application"""
     parser = argparse.ArgumentParser(description='Ingest logs into LogTrack database.')
     parser.add_argument('log_file', help='Path to the log file to ingest.')
     parser.add_argument('--db-path', default='logtrack.db',

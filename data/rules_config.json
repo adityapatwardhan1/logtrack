@@ -1,0 +1,18 @@
+[
+  {
+    "rule_id": "login_failures",
+    "description": "More than 5 failed logins in 10 minutes",
+    "service": "auth",
+    "keyword": "login failed",
+    "threshold": 5,
+    "window_minutes": 10
+  },
+  {
+    "rule_id": "disk_warnings",
+    "description": "More than 3 disk warnings in 15 minutes",
+    "service": "system",
+    "keyword": "disk usage",
+    "threshold": 3,
+    "window_minutes": 15
+  }
+]
