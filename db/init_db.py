@@ -2,31 +2,92 @@ import sqlite3
 import os
 from pathlib import Path
 
-def init_db():
+def init_db(db_path=None):
+    '''
+    Initializes database from schema.sql, containing logs and alerts tables.
+    Defaults to placing logtrack.db in the project root folder.
+    '''
     try:
-        # Read schema
-        sql_script = ""
         script_dir = Path(__file__).resolve().parent
-        db_path = script_dir.parent / "logtrack.db"
         schema_path = script_dir / "schema.sql"
+
+        if db_path is None:
+            db_path = script_dir.parent / "logtrack.db"
 
         with open(schema_path, "r") as schema:
             sql_script = schema.read()
 
-        # Connect to database, execute the commands in the schema
         con = sqlite3.connect(db_path)
         cur = con.cursor()
         cur.executescript(sql_script)
         con.commit()
-
-        # Close connection
         con.close()
+
         print(f"Initialized database at {db_path} with schema from {schema_path}.")
-    
-    # Handle exception
+
     except Exception as e:
         print("An error occurred while initializing the database.")
         print(e)
+        raise
+
+
+def get_db_connection(db_path=None):
+    '''Gets connection to database at db_path. Initializes DB if missing.
+       Defaults to root folder's logtrack.db'''
+    if db_path is None:
+        script_dir = Path(__file__).resolve().parent
+        db_path = script_dir.parent / "logtrack.db"
+
+    if not os.path.exists(db_path):
+        print(f"Database file {db_path} not found. Initializing new database...")
+        init_db(db_path)
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    return conn
+
 
 if __name__ == '__main__':
     init_db()
+
+
+
+# import sqlite3
+# import os
+# from pathlib import Path
+
+# def get_db_connection():
+#     '''Returns connection to database at logtrack.db'''
+#     conn = sqlite3.connect('logtrack.db')
+#     conn.row_factory = sqlite3.Row
+#     return conn
+
+# def init_db():
+#     '''Initializes database from schema.sql, containing logs and alerts tables'''
+#     try:
+#         # Read schema
+#         sql_script = ""
+#         script_dir = Path(__file__).resolve().parent
+#         db_path = script_dir.parent / "logtrack.db"
+#         schema_path = script_dir / "schema.sql"
+
+#         with open(schema_path, "r") as schema:
+#             sql_script = schema.read()
+
+#         # Connect to database, execute the commands in the schema
+#         con = sqlite3.connect(db_path)
+#         cur = con.cursor()
+#         cur.executescript(sql_script)
+#         con.commit()
+
+#         # Close connection
+#         con.close()
+#         print(f"Initialized database at {db_path} with schema from {schema_path}.")
+    
+#     # Handle exception
+#     except Exception as e:
+#         print("An error occurred while initializing the database.")
+#         print(e)
+
+# if __name__ == '__main__':
+#     init_db()
