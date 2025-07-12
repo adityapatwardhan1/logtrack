@@ -46,7 +46,5 @@ def main():
         print(f"  - [{alert['rule_id']}] {alert['triggered_at']}: {alert['message']}")
 
 
-
-
 if __name__ == '__main__':
     main()
