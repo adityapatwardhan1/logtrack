@@ -21,3 +21,18 @@ CREATE TABLE IF NOT EXISTS users (
     role TEXT NOT NULL DEFAULT 'user'
 );
 
+CREATE TABLE IF NOT EXISTS rules (
+    id TEXT PRIMARY KEY,
+    rule_type TEXT NOT NULL,
+    service TEXT,
+    keyword TEXT,
+    message TEXT,
+    threshold INTEGER,
+    window_minutes INTEGER,
+    window_seconds INTEGER,
+    max_idle_minutes INTEGER,
+    user_field TEXT,
+    description TEXT,
+    created_by INTEGER,
+    FOREIGN KEY (created_by) REFERENCES users(id)
+);

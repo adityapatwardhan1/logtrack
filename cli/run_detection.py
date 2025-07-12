@@ -1,4 +1,5 @@
 import sys
+import traceback
 import argparse
 import json
 from sqlite3 import OperationalError
@@ -11,20 +12,19 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--db-path', default='logtrack.db',
                         help='Path to SQLite database file (default: logtrack.db)')
-    parser.add_argument('--rules-path', default='data/rules_config.json',
-                        help='Path to rules JSON file (default: data/rules_config.json)')
     args = parser.parse_args()
 
     # Call evaluate_rules
     try:
-        triggered_alerts = evaluate_rules(args.db_path, args.rules_path)
+        triggered_alerts = evaluate_rules(args.db_path)
     except OperationalError as e:
         print('An error occurred when connecting to the database file:')
-        # print(e)
+        print(e)
         sys.exit(1)
     except Exception as e:
         print('An exception occurred while evaluating the provided rules:')
         print(e)
+        traceback.print_exc()
         sys.exit(1)
 
     recorded_alerts = []
@@ -33,9 +33,6 @@ def main():
     for alert in triggered_alerts:
         recorded_alerts.append(alert)
         record_alert(alert, args.db_path)
-
-    with open(args.rules_path, 'r') as rules_file:
-        all_rules = json.load(rules_file)
 
     num_alerts_triggered = len(triggered_alerts)
     rules_triggered = set(alert["rule_id"] for alert in triggered_alerts)

@@ -92,7 +92,6 @@ def _repeated_message_alerts(cur, rule):
     :return: List of triggered alert dictionaries
     """
     message = rule["message"]
-    print("message:",message)
     threshold = rule["threshold"]
     window = timedelta(minutes=rule["window_minutes"])
 
@@ -103,7 +102,6 @@ def _repeated_message_alerts(cur, rule):
 
     parsed = []
     for row in rows:
-        print(row)
         try:
             parsed.append({
                 "id": row["id"],
@@ -159,7 +157,104 @@ def _inactivity_alerts(cur, rule):
     return alerts
 
 
-def evaluate_rules(db_path: str, rules_path: str) -> list[dict]:
+def _rate_spike_alerts(cur, rule):
+    """
+    Detects if a service generates more than `threshold` log entries within `window_seconds`.
+
+    :param cur: SQLite cursor
+    :param rule: Rule dictionary with 'service', 'threshold', 'window_seconds', 'id'
+    :return: List of triggered alerts
+    """
+    service = rule["service"]
+    threshold = rule["threshold"]
+    window_seconds = rule.get("window_seconds")
+
+    if window_seconds is None:
+        window_minutes = rule.get("window_minutes")
+        if window_minutes is None:
+            raise ValueError("Rate spike rule must have either 'window_seconds' or 'window_minutes'")
+        window_seconds = window_minutes * 60
+
+    window = timedelta(seconds=window_seconds)
+
+    cur.execute(
+        "SELECT id, timestamp FROM logs WHERE service = ?",
+        (service,)
+    )
+    rows = cur.fetchall()
+
+    parsed = []
+    for row in rows:
+        try:
+            parsed.append({
+                "id": row["id"],
+                "timestamp": _parse_timestamp(row["timestamp"])
+            })
+        except Exception:
+            continue
+
+    parsed.sort(key=lambda x: x["timestamp"])
+    alerts = []
+
+    for left, right in find_sliding_windows(parsed, window, threshold):
+        alert = {
+            "rule_id": rule["id"],
+            "triggered_at": parsed[right]["timestamp"].strftime("%Y-%m-%d %H:%M:%S"),
+            "message": f"{service} logged {right - left + 1} entries in {rule['window_seconds']}s",
+            "related_log_ids": [e["id"] for e in parsed[left:right + 1]]
+        }
+        alerts.append(alert)
+        break
+
+    return alerts
+
+
+def _user_threshold_alerts(cur, rule):
+    """
+    Detects alerts where a specific user triggers a given message more than N times in a window.
+
+    :param cur: SQLite cursor
+    :param rule: Rule dict with 'message', 'threshold', 'window_minutes', 'id'
+    :return: List of alerts triggered
+    """
+    message = rule["message"]
+    threshold = rule["threshold"]
+    window = timedelta(minutes=rule["window_minutes"])
+
+    cur.execute("SELECT id, timestamp, user FROM logs WHERE message LIKE ? AND user IS NOT NULL", (f"%{message}%",))
+    rows = cur.fetchall()
+
+    # Group by user
+    events_by_user = {}
+    for row in rows:
+        if row["user"] not in events_by_user:
+            events_by_user[row["user"]] = []
+        try:
+            events_by_user[row["user"]].append({
+                "id": row["id"],
+                "timestamp": _parse_timestamp(row["timestamp"])
+            })
+        except Exception:
+            continue
+
+    alerts = []
+
+    for user, events in events_by_user.items():
+        events.sort(key=lambda e: e["timestamp"])
+        for left, right in find_sliding_windows(events, window, threshold):
+            alert = {
+                "rule_id": rule["id"],
+                "triggered_at": events[right]["timestamp"].strftime("%Y-%m-%d %H:%M:%S"),
+                "message": f"User '{user}' triggered '{message}' {right - left + 1} times in {rule['window_minutes']}m",
+                "related_log_ids": [e["id"] for e in events[left:right + 1]]
+            }
+            alerts.append(alert)
+            break  # One alert per user
+    return alerts
+
+
+
+def evaluate_rules(db_path: str) -> list[dict]:
     """
     Applies all detection rules on the logs stored in the database and returns triggered alerts.
 
@@ -167,12 +262,12 @@ def evaluate_rules(db_path: str, rules_path: str) -> list[dict]:
     :param rules_path: Path to the JSON rules configuration file
     :return: List of alert dictionaries triggered by the rules
     """
-    print("in evaluate_rules")
-    with open(rules_path, 'r') as rules_file:
-        rules = json.load(rules_file)
-
     con = get_db_connection(db_path)
     cur = con.cursor()
+
+    cur.execute("SELECT * FROM rules")
+    rules = [dict(row) for row in cur.fetchall()]
+
     triggered_alerts = []
 
     for rule in rules:
@@ -180,86 +275,18 @@ def evaluate_rules(db_path: str, rules_path: str) -> list[dict]:
         if rule_type == "keyword_threshold":
             triggered_alerts.extend(_keyword_threshold_alerts(cur, rule))
         elif rule_type == "repeated_message":
-            print("repeated message rule")
             triggered_alerts.extend(_repeated_message_alerts(cur, rule))
         elif rule_type == "inactivity":
             triggered_alerts.extend(_inactivity_alerts(cur, rule))
+        elif rule_type == "rate_spike":
+            triggered_alerts.extend(_rate_spike_alerts(cur, rule))
+        elif rule_type == "user_threshold":
+            triggered_alerts.extend(_user_threshold_alerts(cur, rule))
         else:
+            if "rule_type" not in rule:
+                raise ValueError(f"Missing 'rule_type' in rule: {rule}")
             # Unknown rule_type: ignore or log if needed
             continue
 
     con.close()
     return triggered_alerts
-
-
-
-
-# import json
-# from datetime import datetime, timedelta
-# from db.init_db import get_db_connection
-
-# def evaluate_rules(db_path: str, rules_path: str) -> list[dict]:
-#     """
-#     Applies all detection rules on the logs in the database.
-
-#     :param db_path: Path to the SQLite database file
-#     :param rules_path: Path to the rules_config.json file
-#     :return: List of alerts triggered (as dictionaries)
-#     """
-#     with open(rules_path, 'r') as rules_file:
-#         rules = json.load(rules_file)
-
-#     con = get_db_connection(db_path)
-#     cur = con.cursor()
-#     triggered_alerts = []
-
-#     for rule in rules:
-#         rule_type = rule["rule_type"]
-#         if rule_type == "keyword_threshold":
-#             ...
-        
-#             service = rule["service"]
-#             keyword = rule["keyword"]
-#             threshold = rule["threshold"]
-#             window_minutes = rule["window_minutes"]
-
-#             # Safely query logs matching service and keyword
-#             cur.execute(
-#                 "SELECT id, timestamp, message FROM logs WHERE service = ? AND message LIKE ?",
-#                 (service, f"%{keyword}%")
-#             )
-#             entries = cur.fetchall()
-
-#             parsed = []
-#             for row in entries:
-#                 try:
-#                     ts = datetime.strptime(row["timestamp"], "%Y-%m-%d %H:%M:%S")
-#                     parsed.append({
-#                         "id": row["id"],
-#                         "timestamp": ts,
-#                         "message": row["message"]
-#                     })
-#                 except Exception:
-#                     continue
-
-#             parsed.sort(key=lambda x: x["timestamp"])
-
-#             # Two-pointer sliding window
-#             left = 0
-#             for right in range(len(parsed)):
-#                 while parsed[right]["timestamp"] - parsed[left]["timestamp"] > timedelta(minutes=window_minutes):
-#                     left += 1
-#                 window_size = right - left + 1
-#                 if window_size >= threshold:
-#                     window_slice = parsed[left:right + 1]
-#                     alert = {
-#                         "rule_id": rule["id"],
-#                         "triggered_at": parsed[right]["timestamp"].strftime("%Y-%m-%d %H:%M:%S"),
-#                         "message": f"Rule {rule['id']} triggered with {window_size} matches",
-#                         "related_log_ids": [e["id"] for e in window_slice]
-#                     }
-#                     triggered_alerts.append(alert)
-#                     break  # Only one alert per rule
-
-#     con.close()
-#     return triggered_alerts
