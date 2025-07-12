@@ -10,10 +10,10 @@ LogTrack is a lightweight log anomaly detection and alerting tool designed for m
 - Rate spike detection  
 - User-based failure thresholding  
 - Z-score based anomaly detection (statistical spike detection) — **optional, enable via CLI flag**
-<!-- 
+
 ## Z-score Anomaly Detection
 
-This feature detects abnormal spikes in log volume by comparing the current window’s log count against a baseline of previous windows using statistical z-score. When the z-score exceeds the configured threshold, an alert is triggered. -->
+This feature detects abnormal spikes in log volume by comparing the current window’s log count against a baseline of previous windows using statistical z-score. When the z-score exceeds the configured threshold, an alert is triggered.
 
 ### Parameters
 
