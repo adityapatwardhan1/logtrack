@@ -12,6 +12,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--db-path', default='logtrack.db',
                         help='Path to SQLite database file (default: logtrack.db)')
+    parser.add_argument("--zscore", action="store_true", help="Enable z-score based anomaly detection")
     args = parser.parse_args()
 
     # Call evaluate_rules

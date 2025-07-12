@@ -1,6 +1,8 @@
-import json
+import math
 from datetime import datetime, timedelta, timezone
+from collections import defaultdict
 from db.init_db import get_db_connection
+
 
 def _parse_timestamp(ts_str: str) -> datetime:
     """
@@ -80,7 +82,7 @@ def _keyword_threshold_alerts(cur, rule):
 
 
 # Note: repeated message requires EXACT MESSAGES, 
-# oftentimes it's better to use keyword threshold
+# Oftentimes it's better to use keyword threshold
 def _repeated_message_alerts(cur, rule):
     """
     Detects alerts where an exact log message repeats at least a threshold number
@@ -114,7 +116,6 @@ def _repeated_message_alerts(cur, rule):
     alerts = []
 
     for left, right in find_sliding_windows(parsed, window, threshold):
-        print("left, right = "+str(left)+","+str(right))
         alert = {
             "rule_id": rule["id"],
             "triggered_at": parsed[right]["timestamp"].strftime("%Y-%m-%d %H:%M:%S"),
@@ -253,13 +254,102 @@ def _user_threshold_alerts(cur, rule):
     return alerts
 
 
+def _zscore_alerts(cur, rule):
+    """
+    Detects log volume spikes for a service using z-score anomaly detection.
 
-def evaluate_rules(db_path: str) -> list[dict]:
+    :param cur: SQLite cursor
+    :param rule: Rule dict with 'service', 'threshold', 'window_minutes', 'baseline_windows', 'id'
+    :return: List of alerts triggered
+    """
+    service = rule.get("service")
+    threshold = rule.get("zscore_threshold") or rule.get("threshold") or 3  # Default threshold
+    window_minutes = rule.get("window_minutes", 5)
+    baseline_windows = rule.get("baseline_windows", 6)
+
+    if not service or threshold is None:
+        print("Missing service or threshold")
+        return []
+
+    # Fetch all logs for the service
+    cur.execute("""
+        SELECT id, timestamp FROM logs
+        WHERE service = ?
+          AND timestamp IS NOT NULL
+        ORDER BY timestamp ASC
+    """, (service,))
+    rows = cur.fetchall()
+
+    if not rows:
+        print("No logs found")
+        return []
+
+    # Parse timestamps and find latest (reference "now")
+    log_times = []
+    for log_id, ts in rows:
+        try:
+            dt = _parse_timestamp(ts)
+            log_times.append((log_id, dt))
+        except Exception:
+            continue
+
+    if not log_times:
+        print("No valid timestamps")
+        return []
+
+    # Use latest log time as "now"
+    max_time = max(dt for _, dt in log_times)
+    now = max_time
+
+    # Bin logs into windows: bucket 0 = oldest, bucket N = most recent
+    buckets = defaultdict(list)
+    for log_id, dt in log_times:
+        delta_minutes = (now - dt).total_seconds() / 60
+        bucket_idx = baseline_windows - int(delta_minutes // window_minutes)
+        if 0 <= bucket_idx <= baseline_windows:
+            buckets[bucket_idx].append((log_id, dt))
+
+    if len(buckets) < baseline_windows + 1:
+        return []
+
+    # Sort buckets by index: oldest → newest
+    sorted_indices = list(range(baseline_windows + 1))
+    baseline_counts = [len(buckets[idx]) for idx in sorted_indices[:-1]]
+    print(baseline_counts)
+    current_count = len(buckets[sorted_indices[-1]])
+    current_bucket_log_ids = [log_id for log_id, _ in buckets[sorted_indices[-1]]]
+
+    # Compute z-score
+    mean = sum(baseline_counts) / len(baseline_counts)
+    std = math.sqrt(sum((x - mean) ** 2 for x in baseline_counts) / len(baseline_counts)) if baseline_counts else 0
+    alerts = []
+    if std > 0:
+        z = (current_count - mean) / std
+        if z >= threshold:
+            alerts.append({
+                "rule_id": rule["id"],
+                "triggered_at": now.isoformat(),
+                "message": f"{service} log volume spike detected (z={z:.2f})",
+                "related_log_ids": current_bucket_log_ids
+            })
+
+    elif std == 0 and current_count > mean * threshold:
+        alerts.append({
+            "rule_id": rule["id"],
+            "triggered_at": now.isoformat(),
+            "message": f"{service} log volume spike detected (std=0, count={current_count}, mean={mean})",
+            "related_log_ids": current_bucket_log_ids
+        })
+
+    return alerts
+
+
+def evaluate_rules(db_path: str, zscore_enabled=False) -> list[dict]:
     """
     Applies all detection rules on the logs stored in the database and returns triggered alerts.
 
     :param db_path: Path to the SQLite database file
-    :param rules_path: Path to the JSON rules configuration file
+    :param zscore_enabled: Whether to evaluate z-score rules
     :return: List of alert dictionaries triggered by the rules
     """
     con = get_db_connection(db_path)
@@ -282,6 +372,8 @@ def evaluate_rules(db_path: str) -> list[dict]:
             triggered_alerts.extend(_rate_spike_alerts(cur, rule))
         elif rule_type == "user_threshold":
             triggered_alerts.extend(_user_threshold_alerts(cur, rule))
+        elif rule_type == "zscore_anomaly" and zscore_enabled:
+            triggered_alerts.extend(_zscore_alerts(cur, rule))
         else:
             if "rule_type" not in rule:
                 raise ValueError(f"Missing 'rule_type' in rule: {rule}")
