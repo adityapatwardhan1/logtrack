@@ -315,7 +315,6 @@ def _zscore_alerts(cur, rule):
     # Sort buckets by index: oldest → newest
     sorted_indices = list(range(baseline_windows + 1))
     baseline_counts = [len(buckets[idx]) for idx in sorted_indices[:-1]]
-    print(baseline_counts)
     current_count = len(buckets[sorted_indices[-1]])
     current_bucket_log_ids = [log_id for log_id, _ in buckets[sorted_indices[-1]]]
 
