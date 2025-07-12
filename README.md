@@ -37,7 +37,9 @@ Usage
 
 Ingest logs from a log file into the SQLite database.
 
-```python3 -m cli.ingest_logs path/to/logfile.log --db-path path/to/logtrack.db```
+```
+python3 -m cli.ingest_logs path/to/logfile.log --db-path path/to/logtrack.db
+```
 
 --db-path is optional; defaults to logtrack.db.
 
@@ -45,7 +47,9 @@ Ingest logs from a log file into the SQLite database.
 
 Run configured alerting rules against the logs and write alerts to DB.
 
-```python3 -m cli.run_detection --db-path path/to/logtrack.db [--zscore]```
+```
+python3 -m cli.run_detection --db-path path/to/logtrack.db [--zscore]
+```
 
 Use --zscore to enable z-score anomaly detection rules.
 
@@ -53,7 +57,9 @@ Use --zscore to enable z-score anomaly detection rules.
 
 Run the Streamlit dashboard UI:
 
-```streamlit run dashboard/app.py```
+```
+streamlit run dashboard/app.py
+```
 
 Open your browser at the URL Streamlit provides (usually http://localhost:8501).
 
