@@ -1,5 +1,6 @@
 import os 
 import sys
+import traceback
 import streamlit as st
 import sqlite3
 import pandas as pd
@@ -9,7 +10,7 @@ from argon2.exceptions import VerifyMismatchError
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from db.init_db import get_db_connection
-from dashboard_helpers import verify_user
+from auth.auth import verify_user
 
 DB_PATH = Path("logtrack.db")
 ph = PasswordHasher()
@@ -63,12 +64,15 @@ if not st.session_state.logged_in:
                     st.session_state.username = username
                     st.session_state.role = role
                     st.success(f"Welcome, {username}!")
-                    st.experimental_rerun()
+                    st.rerun()
                 else:
                     st.error("Invalid username or password.")
             except Exception:
                 # Log unexpected error internally
-                print(f"Unexpected error during login attempt for user '{username}':", exc_info=True)
+                print(f"Unexpected error during login attempt for user '{username}':")
+                traceback.print_exc()
+                st.error("An unexpected error occurred. Please try again later.")
+
                 # Show generic error to user
                 st.error("An unexpected error occurred. Please try again later.")
     st.stop()

@@ -6,7 +6,6 @@ from db.init_db import get_db_connection
 
 ph = PasswordHasher()
 
-
 def register_user(username: str, password: str, role: str = "user"):
     try:
         password_hash = ph.hash(password)
@@ -17,12 +16,16 @@ def register_user(username: str, password: str, role: str = "user"):
     con = get_db_connection()
     cur = con.cursor()
     try:
-        cur.execute("INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
-                    (username, password_hash, role))
+        cur.execute(
+            "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
+            (username, password_hash, role)
+        )
         con.commit()
         print(f"User '{username}' added with role '{role}'")
     except sqlite3.IntegrityError:
         print(f"Username '{username}' already exists.")
+    except Exception as e:
+        print(f"Error inserting user '{username}': {e}")
     finally:
         con.close()
 
