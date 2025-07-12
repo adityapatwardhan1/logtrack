@@ -20,7 +20,7 @@ def main():
         triggered_alerts = evaluate_rules(args.db_path, args.rules_path)
     except OperationalError as e:
         print('An error occurred when connecting to the database file:')
-        print(e)
+        # print(e)
         sys.exit(1)
     except Exception as e:
         print('An exception occurred while evaluating the provided rules:')
