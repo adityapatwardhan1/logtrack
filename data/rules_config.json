@@ -1,18 +1,31 @@
 [
   {
-    "rule_id": "login_failures",
-    "description": "More than 5 failed logins in 10 minutes",
+    "id": "error_spike",
+    "rule_type": "keyword_threshold",
     "service": "auth",
-    "keyword": "login failed",
-    "threshold": 5,
-    "window_minutes": 10
+    "keyword": "error",
+    "threshold": 3,
+    "window_minutes": 5
   },
   {
-    "rule_id": "disk_warnings",
-    "description": "More than 3 disk warnings in 15 minutes",
-    "service": "system",
-    "keyword": "disk usage",
-    "threshold": 3,
-    "window_minutes": 15
+    "id": "login_failures",
+    "rule_type": "repeated_message",
+    "message": "login failed",
+    "threshold": 5,
+    "window_minutes": 2
+  },
+  {
+    "id": "inactivity_auth",
+    "rule_type": "inactivity",
+    "service": "auth",
+    "max_idle_minutes": 60
+  },
+  {
+  "id": "login_failures",
+  "rule_type": "keyword_threshold",
+  "service": "auth",
+  "keyword": "login failed",
+  "threshold": 5,
+  "window_minutes": 2
   }
 ]

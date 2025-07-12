@@ -140,4 +140,4 @@ with tabs[1]:
 st.sidebar.markdown("---")
 if st.sidebar.button("🔓 Logout"):
     st.session_state.clear()
-    st.experimental_rerun()
+    st.rerun()

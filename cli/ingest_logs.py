@@ -57,6 +57,6 @@ def main():
 
 # To run: 
 # cd logtrack/ 
-# python -m cli.ingest_logs sample.log
+# python3 -m cli.ingest_logs sample.log
 if __name__ == '__main__':
     main()
