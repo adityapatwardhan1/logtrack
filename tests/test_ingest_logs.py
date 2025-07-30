@@ -4,9 +4,9 @@ from cli import ingest_logs
 
 class TestIngestLogs(unittest.TestCase):
 
-    @patch('ingest_logs.os.path.exists', return_value=True)
+    @patch('cli.ingest_logs.os.path.exists', return_value=True)
     @patch('builtins.open', new_callable=mock_open, read_data="2025-07-11 13:22:45 auth: login failed for user alice\n2025-07-11 14:00:00 system: warning: disk usage at 90%\n")
-    @patch('ingest_logs.get_db_connection')
+    @patch('cli.ingest_logs.get_db_connection')
     def test_ingest_log_file_success(self, mock_get_db, mock_file, mock_exists):
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
@@ -34,7 +34,7 @@ class TestIngestLogs(unittest.TestCase):
         mock_conn.commit.assert_called_once()
         mock_conn.close.assert_called_once()
 
-    @patch('ingest_logs.os.path.exists', return_value=False)
+    @patch('cli.ingest_logs.os.path.exists', return_value=False)
     def test_file_not_found(self, mock_exists):
         with self.assertRaises(SystemExit):
             ingest_logs.ingest_log_file('missing.log')

@@ -36,19 +36,6 @@ def main():
         recorded_alerts.append(alert)
         record_alert(alert, args.db_path)
 
-    # Isolation-forest alerts
-    if args.ml:
-        try:
-            from ml.detect import run_ml_detection
-            ml_alerts = run_ml_detection(args.db_path)
-            for alert in ml_alerts:
-                record_alert(alert, args.db_path)
-                recorded_alerts.append(alert)
-        except Exception as e:
-            print("Error in ML-based detection:", e)
-            traceback.print_exc()
-            sys.exit(1)
-
     num_alerts_triggered = len(triggered_alerts)
     rules_triggered = set(alert["rule_id"] for alert in triggered_alerts)
 
