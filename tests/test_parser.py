@@ -39,7 +39,7 @@ class TestParseLogLine(unittest.TestCase):
             "timestamp": "2025-07-11 16:00:00",
             "service": "malformed log line",
             "message": "",
-            "user": None
+            "user": 'unknown'
         }
         self.assertEqual(parse_log_line(line), expected)
 

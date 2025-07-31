@@ -21,7 +21,7 @@ def parse_log_line(log_line: str):
             "timestamp": timestamp,
             "service": rest,
             "message": "",
-            "user": None
+            "user": "unknown"
         }
 
     first_colon_index = rest.index(":")

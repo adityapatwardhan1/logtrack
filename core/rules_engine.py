@@ -360,6 +360,8 @@ def evaluate_rules(db_path: str, zscore_enabled=False) -> list[dict]:
     triggered_alerts = []
 
     for rule in rules:
+        # print("rule type =", rule.get("rule_type"))
+        # print("rule =", rule)
         rule_type = rule.get("rule_type")
         if rule_type == "keyword_threshold":
             triggered_alerts.extend(_keyword_threshold_alerts(cur, rule))
