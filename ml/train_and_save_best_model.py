@@ -24,6 +24,9 @@ if __name__ == '__main__':
     x_train = feature_extractor.fit_transform(x_train, term_weighting='tf-idf')
     x_test = feature_extractor.transform(x_test)
 
+    os.makedirs("saved_feature_extractor", exist_ok=True)
+    joblib.dump(feature_extractor, f"saved_feature_extractor/feature_extractor.pkl")
+
     models = [
         DecisionTreeClassifier(max_depth=10, class_weight='balanced', random_state=42),
         IsolationForest(contamination=0.1, random_state=42),

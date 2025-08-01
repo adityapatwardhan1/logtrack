@@ -2,6 +2,9 @@ import math
 from datetime import datetime, timedelta, timezone
 from collections import defaultdict
 from db.init_db import get_db_connection
+from sklearn.feature_extraction.text import TfidfVectorizer
+import joblib
+import os
 
 
 def _parse_timestamp(ts_str: str) -> datetime:
@@ -343,12 +346,105 @@ def _zscore_alerts(cur, rule):
     return alerts
 
 
-def evaluate_rules(db_path: str, zscore_enabled=False) -> list[dict]:
+
+# def _ml_alerts(cur, rule):
+#     print("in _ml_alerts")
+#     model_path = rule.get("model_path")
+#     message_field = rule.get("message_field", "message")
+#     threshold = rule.get("anomaly_threshold", 0.5)
+
+#     if not model_path or not os.path.isfile(model_path):
+#         return []
+
+#     try:
+#         model = joblib.load(model_path)
+#     except Exception as e:
+#         print(f"Failed to load ML model from {model_path}: {e}")
+#         return []
+
+#     cur.execute(f"SELECT id, timestamp, {message_field} FROM logs")
+#     rows = cur.fetchall()
+#     messages = [row[message_field] for row in rows if row[message_field]]
+#     ids = [row["id"] for row in rows if row[message_field]]
+#     timestamps = [_parse_timestamp(row["timestamp"]) for row in rows if row[message_field]]
+
+#     if not messages:
+#         return []
+
+#     vectorizer = TfidfVectorizer()
+#     X = vectorizer.fit_transform(messages)
+
+#     try:
+#         y_pred = model.predict(X)
+#     except Exception as e:
+#         print(f"Failed to run prediction using ML model: {e}")
+#         return []
+
+#     alerts = []
+#     for i, pred in enumerate(y_pred):
+#         if pred == 1 or (hasattr(model, "decision_function") and model.decision_function(X[i]) > threshold):
+#             alert = {
+#                 "rule_id": rule["id"],
+#                 "triggered_at": timestamps[i].strftime("%Y-%m-%d %H:%M:%S"),
+#                 "message": f"ML model flagged anomaly: {messages[i]}",
+#                 "related_log_ids": [ids[i]]
+#             }
+#             alerts.append(alert)
+
+#     return alerts
+
+def run_ml_detection(con, model_path, feature_extractor_path, window='session'):
+    import pandas as pd
+    print("in run_ml_detection")
+    df_logs = pd.read_sql_query("SELECT timestamp, service, message FROM logs ORDER BY timestamp", con)
+    con.close()
+
+    # Save as structured CSV for dataloader (simulated)
+    structured_csv = "log_data/HDFS/runtime_structured_logs.csv"
+    os.makedirs(os.path.dirname(structured_csv), exist_ok=True)
+    df_logs.rename(columns={"timestamp": "Time", "service": "Component", "message": "EventTemplate"}).to_csv(
+        structured_csv, index=False
+    )
+
+    # Load model
+    model = joblib.load(model_path)
+
+    # Load pre-fitted feature extractor
+    feature_extractor_path = "saved_feature_extractor/feature_extractor.pkl"
+    feature_extractor = joblib.load(feature_extractor_path)
+    logs_transformed = feature_extractor.transform(df_logs["message"])
+
+    # Predict
+    y_pred = model.predict(logs_transformed)
+
+    # Alert if y_pred = 1 (anomaly)
+    alerts = []
+    for i, is_anomaly in enumerate(y_pred):
+        if is_anomaly == 1:
+            log = logs_transformed[i]
+            # Lookup timestamp/service/message again
+            ts, svc, msg = df_logs.iloc[i].values
+            alert = {
+                "rule_id": "ml_anomaly",
+                "triggered_at": ts,
+                "message": f"[ML] Anomaly detected by ML on service '{svc}' — '{msg}'",
+                "severity": 2,
+                "related_log_ids": [],
+                "data": {}
+            }
+            alerts.append(alert)
+
+    print(f"[ML] {len(alerts)} anomalies detected")
+    return alerts
+
+
+def evaluate_rules(db_path: str, zscore_enabled=False, ml_enabled=False, model_path=None, feature_extractor_path=None) -> list[dict]:
     """
     Applies all detection rules on the logs stored in the database and returns triggered alerts.
 
     :param db_path: Path to the SQLite database file
     :param zscore_enabled: Whether to evaluate z-score rules
+    :param ml_enabled: Whether to evaluate ML-based anomaly detection
     :return: List of alert dictionaries triggered by the rules
     """
     con = get_db_connection(db_path)
@@ -360,8 +456,6 @@ def evaluate_rules(db_path: str, zscore_enabled=False) -> list[dict]:
     triggered_alerts = []
 
     for rule in rules:
-        # print("rule type =", rule.get("rule_type"))
-        # print("rule =", rule)
         rule_type = rule.get("rule_type")
         if rule_type == "keyword_threshold":
             triggered_alerts.extend(_keyword_threshold_alerts(cur, rule))
@@ -378,8 +472,9 @@ def evaluate_rules(db_path: str, zscore_enabled=False) -> list[dict]:
         else:
             if "rule_type" not in rule:
                 raise ValueError(f"Missing 'rule_type' in rule: {rule}")
-            # Unknown rule_type: ignore or log if needed
-            continue
+    if ml_enabled:
+        print("ml_enabled is True in eavluate_rules")
+        triggered_alerts.extend(run_ml_detection(con, model_path, feature_extractor_path))
 
     con.close()
     return triggered_alerts
