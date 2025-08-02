@@ -18,17 +18,13 @@ def main():
     parser.add_argument('--db-path', default='logtrack.db',
                         help='Path to SQLite database file (default: logtrack.db)')
     parser.add_argument("--zscore", action="store_true", help="Enable z-score based anomaly detection")
-    parser.add_argument("--ml", default="saved_models/LogisticRegression.pkl", help="Path to ML model (e.g. saved_models/DecisionTree.pkl)")
-    parser.add_argument("--ml_feature_extractor_path", default="saved_feature_extractor/feature_extractor.pkl", help="Path to ML model (e.g. saved_feature_extractor/feature_extractor.pkl)")
+    parser.add_argument("--ml", action="store_true")
     args = parser.parse_args()
-    print(args.ml)
 
     # Rules based detection
     try:
         ml_enabled = bool(args.ml and os.path.exists(args.ml))
-        print("ml_enabled=", ml_enabled)
-        triggered_alerts = evaluate_rules(args.db_path, zscore_enabled=args.zscore, ml_enabled=ml_enabled, 
-                                          model_path=args.ml, feature_extractor_path=args.ml_feature_extractor_path)
+        triggered_alerts = evaluate_rules(args.db_path, zscore_enabled=args.zscore, ml_enabled=ml_enabled)
     except OperationalError as e:
         print('An error occurred when connecting to the database file:')
         print(e)

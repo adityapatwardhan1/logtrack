@@ -346,58 +346,9 @@ def _zscore_alerts(cur, rule):
     return alerts
 
 
-# def run_ml_detection(con, model_path, feature_extractor_path, window='session'):
-#     import pandas as pd
-#     from loglizer import dataloader
-
-#     print("in run_ml_detection")
-#     df_logs = pd.read_sql_query("SELECT timestamp, service, message FROM logs ORDER BY timestamp", con)
-#     con.close()
-
-#     # Save as structured CSV (required for load_HDFS)
-#     structured_csv = "log_data/HDFS/runtime_structured_logs.csv"
-#     os.makedirs(os.path.dirname(structured_csv), exist_ok=True)
-#     df_logs.rename(columns={"timestamp": "Time", "service": "Component", "message": "Content"}).to_csv(
-#         structured_csv, index=False
-#     )
-
-#     print(df_logs.columns)
-
-#     # Load model and feature extractor
-#     model = joblib.load(model_path)
-#     feature_extractor = joblib.load(feature_extractor_path)
-
-#     # Convert raw logs to session windows of EventTemplate IDs
-#     (x_train, _), (x_test, _) = dataloader.load_HDFS(structured_csv, label_file=None, window=window, train_ratio=0.0)
-
-#     # Feature transform (same as training)
-#     logs_transformed = feature_extractor.transform(x_test)
-
-#     # Predict
-#     y_pred = model.predict(logs_transformed)
-
-#     alerts = []
-#     for i, is_anomaly in enumerate(y_pred):
-#         if is_anomaly == 1:
-#             ts, svc, msg = df_logs.iloc[i].values
-#             alert = {
-#                 "rule_id": "ml_anomaly",
-#                 "triggered_at": ts,
-#                 "message": f"[ML] Anomaly detected by ML on service '{svc}' — '{msg}'",
-#                 "severity": 2,
-#                 "related_log_ids": [],
-#                 "data": {}
-#             }
-#             alerts.append(alert)
-
-#     print(f"[ML] {len(alerts)} anomalies detected")
-#     return alerts
-
-
-
-def run_ml_detection(con, model_path, feature_extractor_paths, window='session'):
+def run_ml_detection(con, model_path, threshold_path, feature_extractor_paths):
     """
-    Run your trained ML model on logs fetched from DB connection `con`.
+    Run trained ML model on logs fetched from DB connection `con`.
     feature_extractor_paths is a dict with keys:
       - 'tfidf', 'scaler', 'service_encoder', 'user_hasher'
     """
@@ -418,14 +369,18 @@ def run_ml_detection(con, model_path, feature_extractor_paths, window='session')
     con.close()
 
     # === Derive features ===
-    # Convert timestamp to datetime if not already
     df_logs['timestamp'] = pd.to_datetime(df_logs['timestamp'])
 
-    # Extract block id from message (handle cases with no block)
+    # Extract BlockId from message
     df_logs['BlockId'] = df_logs['message'].str.extract(r'(blk_-?\d+)')
 
-    # Compute block_count per blockid
-    block_counts = df_logs['BlockId'].value_counts().to_dict()
+    # Load saved block count mapping
+    block_count_path = feature_extractor_paths['block_count']
+    if not os.path.exists(block_count_path):
+        raise FileNotFoundError(f"Missing block count mapping at {block_count_path}")
+    block_counts = joblib.load(block_count_path)
+
+    # Apply consistent mapping
     df_logs['block_count'] = df_logs['BlockId'].map(block_counts).fillna(0).astype(int)
 
     # Timestamp features
@@ -444,41 +399,43 @@ def run_ml_detection(con, model_path, feature_extractor_paths, window='session')
     user_data = df_logs['user'].fillna("unknown").astype(str).apply(lambda x: [x]).tolist()
     X_user = hasher.transform(user_data)
 
-    # Numeric features to scale: hour, dayofweek, block_count
+    # Numeric features to scale
     X_numeric = df_logs[['hour', 'dayofweek', 'block_count']].astype(np.float32).values
     X_numeric_scaled = scaler.transform(X_numeric)
 
-    # Combine all features horizontally
+    # Combine all features
     X_combined = hstack([X_text, X_numeric_scaled, X_service, X_user])
 
     # Load model
     model = joblib.load(model_path)
 
-    # Predict anomalies
-    y_pred = model.predict(X_combined)
+    # Load threshold
+    with open(threshold_path, 'r') as threshold_file:
+        threshold = int(threshold_file.readline().strip('\n'))
 
+    # Predict
+    y_proba = model.predict_proba(X_combined)
+    y_pred = (y_proba[:, 1] > threshold).astype(int)
+
+    # Format alerts
     alerts = []
     for i, is_anomaly in enumerate(y_pred):
         if is_anomaly == 1:
             ts, svc, msg = df_logs.iloc[i][['timestamp', 'service', 'message']]
-            alert = {
+            alerts.append({
                 "rule_id": "ml_anomaly",
-                "triggered_at": ts.strftime("%Y-%m-%d %H:%M:%S"),  # convert to string
+                "triggered_at": ts.strftime("%Y-%m-%d %H:%M:%S"),
                 "message": f"[ML] Anomaly detected by ML on service '{svc}' — '{msg}'",
                 "severity": 2,
                 "related_log_ids": [],
                 "data": {}
-            }
-
-            alerts.append(alert)
+            })
 
     print(f"[ML] {len(alerts)} anomalies detected")
     return alerts
 
 
-
-
-def evaluate_rules(db_path: str, zscore_enabled=False, ml_enabled=False, model_path=None, feature_extractor_path=None) -> list[dict]:
+def evaluate_rules(db_path: str, zscore_enabled=False, ml_enabled=False) -> list[dict]:
     """
     Applies all detection rules on the logs stored in the database and returns triggered alerts.
 
@@ -492,7 +449,6 @@ def evaluate_rules(db_path: str, zscore_enabled=False, ml_enabled=False, model_p
 
     cur.execute("SELECT * FROM rules")
     rules = [dict(row) for row in cur.fetchall()]
-
     triggered_alerts = []
 
     for rule in rules:
@@ -513,15 +469,16 @@ def evaluate_rules(db_path: str, zscore_enabled=False, ml_enabled=False, model_p
             if "rule_type" not in rule:
                 raise ValueError(f"Missing 'rule_type' in rule: {rule}")
     if ml_enabled:
-        print("ml_enabled is True in eavluate_rules")
         feature_extractor_paths = {
             'tfidf': 'saved_feature_extractor/feature_extractor.pkl',
             'scaler': 'saved_feature_extractor/scaler.pkl',
             'service_encoder': 'saved_feature_extractor/service_encoder.pkl',
             'user_hasher': 'saved_feature_extractor/user_hasher.pkl',
+            'block_count': 'saved_feature_extractor/block_count_mapping.pkl'
         }
-
-        triggered_alerts.extend(run_ml_detection(con, model_path, feature_extractor_paths))
+        model_path = 'saved_models/XGBoostClassifier.pkl'
+        threshold_path = 'saved_models/threshold.txt'
+        triggered_alerts.extend(run_ml_detection(con, model_path, threshold_path, feature_extractor_paths))
 
     con.close()
     return triggered_alerts

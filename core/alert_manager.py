@@ -8,7 +8,6 @@ def record_alert(alert: dict, db_path: str) -> None:
     :param db_path: Path of database to write to
     :type db_path: str
     """
-    print("alert=",alert)
     con = get_db_connection(db_path=db_path)
     cur = con.cursor()
     cur.execute("INSERT INTO alerts (rule_id, triggered_at, message, related_log_ids)" \
