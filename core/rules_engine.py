@@ -362,8 +362,6 @@ def run_ml_detection(con, model_path, threshold_path, feature_extractor_paths):
     from sklearn.feature_extraction.text import TfidfVectorizer, FeatureHasher
     from sklearn.preprocessing import OneHotEncoder
 
-    print("In run_ml_detection...")
-
     # Load logs from DB ordered by timestamp
     df_logs = pd.read_sql_query("SELECT timestamp, service, message, user FROM logs ORDER BY timestamp", con)
     con.close()
@@ -411,7 +409,7 @@ def run_ml_detection(con, model_path, threshold_path, feature_extractor_paths):
 
     # Load threshold
     with open(threshold_path, 'r') as threshold_file:
-        threshold = int(threshold_file.readline().strip('\n'))
+        threshold = float(threshold_file.readline().strip('\n'))
 
     # Predict
     y_proba = model.predict_proba(X_combined)
@@ -431,7 +429,6 @@ def run_ml_detection(con, model_path, threshold_path, feature_extractor_paths):
                 "data": {}
             })
 
-    print(f"[ML] {len(alerts)} anomalies detected")
     return alerts
 
 

@@ -1,0 +1,12 @@
+cat > sample.log << EOF
+2025-07-11 13:22:45 auth: login failed for user alice
+2025-07-11 13:23:00 auth: login failed for user alice
+2025-07-11 13:23:20 auth: login failed for user alice
+2025-07-11 13:23:40 auth: login failed for user alice
+2025-07-11 13:24:00 auth: login failed for user alice
+2025-07-11 14:00:00 system: warning: disk usage at 90%
+2025-07-11 14:05:00 system: warning: disk usage at 91%
+2025-07-11 14:07:30 system: warning: disk usage at 92%
+2025-07-11 14:05:10 auth: login successful for user bob
+2025-07-11 14:10:00 db: connection error
+EOF
