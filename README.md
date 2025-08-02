@@ -26,7 +26,7 @@ Detects abnormal spikes in log volume by comparing the current time window’s l
 
 ## XGBOOST ML Anomaly Detection
 
-Detects abnormal log entries based upon a pre-trained XGBoost model. Such a model is constructed using a dataset of HDFS (Hadoop Distributed File System) logs, as found in Loglizer [@DBLP:conf/issre/HeZHL16].
+Detects abnormal log entries based upon a pre-trained XGBoost model. Such a model is constructed using a dataset of HDFS (Hadoop Distributed File System) logs, as found in Loglizer [He et al, 2016].
 
 ### Training the XGBoost Model
 To train and save the XGBoost model, there are two options.
@@ -120,20 +120,4 @@ streamlit run dashboard/app.py
 Open your browser at the URL Streamlit provides (usually http://localhost:8501).
 
 ## References
-@inproceedings{DBLP:conf/issre/HeZHL16,
-  author       = {Shilin He and
-                  Jieming Zhu and
-                  Pinjia He and
-                  Michael R. Lyu},
-  title        = {Experience Report: System Log Analysis for Anomaly Detection},
-  booktitle    = {27th {IEEE} International Symposium on Software Reliability Engineering,
-                  {ISSRE} 2016, Ottawa, ON, Canada, October 23-27, 2016},
-  pages        = {207--218},
-  publisher    = {{IEEE} Computer Society},
-  year         = {2016},
-  url          = {https://doi.org/10.1109/ISSRE.2016.21},
-  doi          = {10.1109/ISSRE.2016.21},
-  timestamp    = {Fri, 24 Mar 2023 00:04:22 +0100},
-  biburl       = {https://dblp.org/rec/conf/issre/HeZHL16.bib},
-  bibsource    = {dblp computer science bibliography, https://dblp.org}
-}
+Shilin He, Jieming Zhu, Pinjia He, Michael R. Lyu. Experience Report: System Log Analysis for Anomaly Detection, IEEE International Symposium on Software Reliability Engineering (ISSRE), 2016. [Bibtex][中文版本] (ISSRE Most Influential Paper)
