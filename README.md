@@ -102,7 +102,7 @@ Open your browser at the URL Streamlit provides (usually http://localhost:8501).
 
 ## Optional/Experimental XGBoost ML Anomaly Detection
 
-LogTrack also includes __optional__ point anomaly using XGBoost. Such a model is constructed using a dataset of HDFS (Hadoop Distributed File System) logs, as found in Loglizer [He et al, 2016].
+LogTrack also includes __optional__ point anomaly detection using XGBoost. Such a model is constructed using a dataset of HDFS (Hadoop Distributed File System) logs, as found in Loglizer [He et al, 2016].
 
 To run log detection with ML anomaly detection:
 ```
