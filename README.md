@@ -31,6 +31,25 @@ cd logtrack
 pip install -r requirements.txt
 ```
 
+## Initialization
+Consider the following as seeding scripts to be run once to initialize the system.
+
+Initialize database (from root):
+```
+python3 db/init_db.py
+```
+
+Add rules:
+```
+python3 migrate_rules.py
+```
+This adds rules initialized from a starter JSON file.
+
+Create users:
+```
+python3 -m cli.create_user name password
+```
+
 ## Usage
 Usage
 1. Ingest Logs
