@@ -11,7 +11,7 @@ LogTrack is a lightweight log anomaly detection and alerting tool designed to mo
 - Run detection rules on logs via CLI, write alerts to DB  
 - Simple Streamlit web UI for viewing alerts and managing rules  
 - **Z-score based anomaly detection** (statistical spike detection; optional, enabled via CLI flag)  
-- **XGBoost ML anomaly detection** (ML based point anomaly detection; optional, enabled via CLI flag) 
+- **Optional/Experimental XGBoost ML anomaly detection** (ML based point anomaly detection; enabled via CLI flag) 
 
 ## Z-score Anomaly Detection
 
@@ -24,24 +24,27 @@ Detects abnormal spikes in log volume by comparing the current time window’s l
 - `baseline_windows`: number of historical windows used as baseline  
 - `threshold`: z-score threshold for triggering alerts (default 3.0)  
 
-## XGBOOST ML Anomaly Detection
+## Optional/Experimental XGBoost ML Anomaly Detection
 
 Detects abnormal log entries based upon a pre-trained XGBoost model. Such a model is constructed using a dataset of HDFS (Hadoop Distributed File System) logs, as found in Loglizer [He et al, 2016].
 
 ### Training the XGBoost Model
-To train and save the XGBoost model, there are two options.
+To train and save the XGBoost model, there are two options. The appropriate command to use depends upon the nature of the logs for
+one's use case.
 
-The following command does not account for Block IDs, a feature within the HDFS logs of the dataset.
+Without Block IDs:
 ```
 python3 ml/train_and_save_xgboost_model.py
 ```
 
-To use Block IDs as a feature, use the command
+With Block IDs (if that is a feature of the data):
 ```
 python3 ml/train_and_save_xgboost_model.py --extract_block_id
 ```
-The appropriate command to use depends upon the nature of the logs being ingested.
 Both commands save the XGBoost model and log feature extractor as .pkl files to the directories saved_models/ and saved_feature_extractor/, respectively.
+
+__Note__: While XGBoost-based anomaly detection is optional and experimental, training the model is required for it to work. If you prefer a simpler approach, you can rely on z-score anomaly detection without needing to train the ML model.
+
 
 ## Installation
 
