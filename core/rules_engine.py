@@ -346,96 +346,136 @@ def _zscore_alerts(cur, rule):
     return alerts
 
 
+# def run_ml_detection(con, model_path, feature_extractor_path, window='session'):
+#     import pandas as pd
+#     from loglizer import dataloader
 
-# def _ml_alerts(cur, rule):
-#     print("in _ml_alerts")
-#     model_path = rule.get("model_path")
-#     message_field = rule.get("message_field", "message")
-#     threshold = rule.get("anomaly_threshold", 0.5)
+#     print("in run_ml_detection")
+#     df_logs = pd.read_sql_query("SELECT timestamp, service, message FROM logs ORDER BY timestamp", con)
+#     con.close()
 
-#     if not model_path or not os.path.isfile(model_path):
-#         return []
+#     # Save as structured CSV (required for load_HDFS)
+#     structured_csv = "log_data/HDFS/runtime_structured_logs.csv"
+#     os.makedirs(os.path.dirname(structured_csv), exist_ok=True)
+#     df_logs.rename(columns={"timestamp": "Time", "service": "Component", "message": "Content"}).to_csv(
+#         structured_csv, index=False
+#     )
 
-#     try:
-#         model = joblib.load(model_path)
-#     except Exception as e:
-#         print(f"Failed to load ML model from {model_path}: {e}")
-#         return []
+#     print(df_logs.columns)
 
-#     cur.execute(f"SELECT id, timestamp, {message_field} FROM logs")
-#     rows = cur.fetchall()
-#     messages = [row[message_field] for row in rows if row[message_field]]
-#     ids = [row["id"] for row in rows if row[message_field]]
-#     timestamps = [_parse_timestamp(row["timestamp"]) for row in rows if row[message_field]]
+#     # Load model and feature extractor
+#     model = joblib.load(model_path)
+#     feature_extractor = joblib.load(feature_extractor_path)
 
-#     if not messages:
-#         return []
+#     # Convert raw logs to session windows of EventTemplate IDs
+#     (x_train, _), (x_test, _) = dataloader.load_HDFS(structured_csv, label_file=None, window=window, train_ratio=0.0)
 
-#     vectorizer = TfidfVectorizer()
-#     X = vectorizer.fit_transform(messages)
+#     # Feature transform (same as training)
+#     logs_transformed = feature_extractor.transform(x_test)
 
-#     try:
-#         y_pred = model.predict(X)
-#     except Exception as e:
-#         print(f"Failed to run prediction using ML model: {e}")
-#         return []
+#     # Predict
+#     y_pred = model.predict(logs_transformed)
 
 #     alerts = []
-#     for i, pred in enumerate(y_pred):
-#         if pred == 1 or (hasattr(model, "decision_function") and model.decision_function(X[i]) > threshold):
+#     for i, is_anomaly in enumerate(y_pred):
+#         if is_anomaly == 1:
+#             ts, svc, msg = df_logs.iloc[i].values
 #             alert = {
-#                 "rule_id": rule["id"],
-#                 "triggered_at": timestamps[i].strftime("%Y-%m-%d %H:%M:%S"),
-#                 "message": f"ML model flagged anomaly: {messages[i]}",
-#                 "related_log_ids": [ids[i]]
+#                 "rule_id": "ml_anomaly",
+#                 "triggered_at": ts,
+#                 "message": f"[ML] Anomaly detected by ML on service '{svc}' — '{msg}'",
+#                 "severity": 2,
+#                 "related_log_ids": [],
+#                 "data": {}
 #             }
 #             alerts.append(alert)
 
+#     print(f"[ML] {len(alerts)} anomalies detected")
 #     return alerts
 
-def run_ml_detection(con, model_path, feature_extractor_path, window='session'):
+
+
+def run_ml_detection(con, model_path, feature_extractor_paths, window='session'):
+    """
+    Run your trained ML model on logs fetched from DB connection `con`.
+    feature_extractor_paths is a dict with keys:
+      - 'tfidf', 'scaler', 'service_encoder', 'user_hasher'
+    """
+
     import pandas as pd
-    print("in run_ml_detection")
-    df_logs = pd.read_sql_query("SELECT timestamp, service, message FROM logs ORDER BY timestamp", con)
+    import numpy as np
+    import os
+    import joblib
+    from scipy.sparse import hstack
+    from sklearn.preprocessing import StandardScaler
+    from sklearn.feature_extraction.text import TfidfVectorizer, FeatureHasher
+    from sklearn.preprocessing import OneHotEncoder
+
+    print("In run_ml_detection...")
+
+    # Load logs from DB ordered by timestamp
+    df_logs = pd.read_sql_query("SELECT timestamp, service, message, user FROM logs ORDER BY timestamp", con)
     con.close()
 
-    # Save as structured CSV for dataloader (simulated)
-    structured_csv = "log_data/HDFS/runtime_structured_logs.csv"
-    os.makedirs(os.path.dirname(structured_csv), exist_ok=True)
-    df_logs.rename(columns={"timestamp": "Time", "service": "Component", "message": "EventTemplate"}).to_csv(
-        structured_csv, index=False
-    )
+    # === Derive features ===
+    # Convert timestamp to datetime if not already
+    df_logs['timestamp'] = pd.to_datetime(df_logs['timestamp'])
+
+    # Extract block id from message (handle cases with no block)
+    df_logs['BlockId'] = df_logs['message'].str.extract(r'(blk_-?\d+)')
+
+    # Compute block_count per blockid
+    block_counts = df_logs['BlockId'].value_counts().to_dict()
+    df_logs['block_count'] = df_logs['BlockId'].map(block_counts).fillna(0).astype(int)
+
+    # Timestamp features
+    df_logs['hour'] = df_logs['timestamp'].dt.hour
+    df_logs['dayofweek'] = df_logs['timestamp'].dt.dayofweek
+
+    # Load feature transformers
+    tfidf = joblib.load(feature_extractor_paths['tfidf'])
+    scaler = joblib.load(feature_extractor_paths['scaler'])
+    service_enc = joblib.load(feature_extractor_paths['service_encoder'])
+    hasher = joblib.load(feature_extractor_paths['user_hasher'])
+
+    # Transform features
+    X_text = tfidf.transform(df_logs['message'])
+    X_service = service_enc.transform(df_logs[['service']])
+    user_data = df_logs['user'].fillna("unknown").astype(str).apply(lambda x: [x]).tolist()
+    X_user = hasher.transform(user_data)
+
+    # Numeric features to scale: hour, dayofweek, block_count
+    X_numeric = df_logs[['hour', 'dayofweek', 'block_count']].astype(np.float32).values
+    X_numeric_scaled = scaler.transform(X_numeric)
+
+    # Combine all features horizontally
+    X_combined = hstack([X_text, X_numeric_scaled, X_service, X_user])
 
     # Load model
     model = joblib.load(model_path)
 
-    # Load pre-fitted feature extractor
-    feature_extractor_path = "saved_feature_extractor/feature_extractor.pkl"
-    feature_extractor = joblib.load(feature_extractor_path)
-    logs_transformed = feature_extractor.transform(df_logs["message"])
+    # Predict anomalies
+    y_pred = model.predict(X_combined)
 
-    # Predict
-    y_pred = model.predict(logs_transformed)
-
-    # Alert if y_pred = 1 (anomaly)
     alerts = []
     for i, is_anomaly in enumerate(y_pred):
         if is_anomaly == 1:
-            log = logs_transformed[i]
-            # Lookup timestamp/service/message again
-            ts, svc, msg = df_logs.iloc[i].values
+            ts, svc, msg = df_logs.iloc[i][['timestamp', 'service', 'message']]
             alert = {
                 "rule_id": "ml_anomaly",
-                "triggered_at": ts,
+                "triggered_at": ts.strftime("%Y-%m-%d %H:%M:%S"),  # convert to string
                 "message": f"[ML] Anomaly detected by ML on service '{svc}' — '{msg}'",
                 "severity": 2,
                 "related_log_ids": [],
                 "data": {}
             }
+
             alerts.append(alert)
 
     print(f"[ML] {len(alerts)} anomalies detected")
     return alerts
+
+
 
 
 def evaluate_rules(db_path: str, zscore_enabled=False, ml_enabled=False, model_path=None, feature_extractor_path=None) -> list[dict]:
@@ -474,7 +514,14 @@ def evaluate_rules(db_path: str, zscore_enabled=False, ml_enabled=False, model_p
                 raise ValueError(f"Missing 'rule_type' in rule: {rule}")
     if ml_enabled:
         print("ml_enabled is True in eavluate_rules")
-        triggered_alerts.extend(run_ml_detection(con, model_path, feature_extractor_path))
+        feature_extractor_paths = {
+            'tfidf': 'saved_feature_extractor/feature_extractor.pkl',
+            'scaler': 'saved_feature_extractor/scaler.pkl',
+            'service_encoder': 'saved_feature_extractor/service_encoder.pkl',
+            'user_hasher': 'saved_feature_extractor/user_hasher.pkl',
+        }
+
+        triggered_alerts.extend(run_ml_detection(con, model_path, feature_extractor_paths))
 
     con.close()
     return triggered_alerts
