@@ -2,13 +2,22 @@ import pandas as pd
 import numpy as np
 import os
 import joblib
-
+import argparse 
 from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import TfidfVectorizer, FeatureHasher
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.metrics import classification_report
 from scipy.sparse import hstack
 from xgboost import XGBClassifier
+
+# Parse command-line arguments
+def parse_args():
+    parser = argparse.ArgumentParser(description="Train XGBoost classifier on log data.")
+    parser.add_argument(
+        '--extract_block_id', action='store_true',
+        help="Whether to extract BlockId and calculate block count for each BlockId."
+    )
+    return parser.parse_args()
 
 # Load data
 log_file = './log_data/HDFS/HDFS_100k.log_structured.csv'
@@ -27,9 +36,15 @@ merged_df['timestamp'] = pd.to_datetime(
 )
 merged_df['user'] = merged_df['Content'].str.extract(r'src: /(\d+\.\d+\.\d+\.\d+)')
 
-# Add optional feature: event count per BlockId
-block_counts = merged_df['BlockId'].value_counts().to_dict()
-merged_df['block_count'] = merged_df['BlockId'].map(block_counts)
+# Parse the arguments
+args = parse_args()
+
+# Add optional feature: event count per BlockId based on CLI argument
+if args.extract_block_id:
+    block_counts = merged_df['BlockId'].value_counts().to_dict()
+    merged_df['block_count'] = merged_df['BlockId'].map(block_counts)
+else:
+    merged_df['block_count'] = 0  # Set all block counts to zero
 
 # Final columns (no block_count)
 data_df = merged_df[['timestamp', 'Component', 'Content', 'user', 'Label']].copy()
@@ -53,7 +68,6 @@ block_counts = data_df['BlockId'].value_counts().to_dict()
 print("block_counts head =", data_df['BlockId'].value_counts().head(10))
 print("------------------------")
 print("block_counts tail =", data_df['BlockId'].value_counts().tail(10))
-
 
 # Save block counts mapping for reuse
 os.makedirs("saved_feature_extractor", exist_ok=True)
