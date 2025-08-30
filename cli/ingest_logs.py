@@ -31,6 +31,15 @@ def parse_flexible_timestamp(raw_ts):
 
 
 def ingest_log_file(file_path, db_path="logtrack.db"):
+    """
+    Ingests log files into a database
+    :param file_path: Path to the log file
+    :type file_path: str
+    :param db_path: Path to the log database
+    :type db_path: str
+    """
+
+    # Handle case where log file does not exist
     if not os.path.exists(file_path):
         print(f'Could not find log file {file_path}, exiting...')
         sys.exit(1)
@@ -39,13 +48,14 @@ def ingest_log_file(file_path, db_path="logtrack.db"):
     cur = con.cursor()
     entries_to_insert = []
 
+    # Ingest JSON file
     if file_path.endswith(".json"):
         with open(file_path, 'r') as log_file:
             try:
                 data = json.load(log_file)
                 if isinstance(data, dict):
                     data = [data]
-            except json.JSONDecodeError:
+            except json.JSONDecodeError:  # Ingest individual JSON lines 
                 log_file.seek(0)
                 data = []
                 for line in log_file:
@@ -67,6 +77,7 @@ def ingest_log_file(file_path, db_path="logtrack.db"):
             except KeyError as e:
                 print(f"Skipping entry missing field {e}: {entry}")
 
+    # Ingest CSV (Hadoop Distributed File System) format
     elif file_path.endswith(".csv"):
         with open(file_path, "r") as f:
             reader = csv.DictReader(f)
@@ -83,6 +94,7 @@ def ingest_log_file(file_path, db_path="logtrack.db"):
                 except Exception as e:
                     print(f"Skipping CSV row due to error: {e}")
 
+    # Ingest raw log file (see sample.log for an example)
     else:
         with open(file_path, 'r') as log_file:
             for line in log_file:
@@ -109,6 +121,7 @@ def ingest_log_file(file_path, db_path="logtrack.db"):
 
 
 def main():
+    """Main function"""
     parser = argparse.ArgumentParser(description='Ingest logs into LogTrack database.')
     parser.add_argument('log_file', help='Path to the log file to ingest.')
     parser.add_argument('--db-path', default='logtrack.db',
@@ -117,5 +130,6 @@ def main():
     ingest_log_file(args.log_file, db_path=args.db_path)
 
 
+# Main method
 if __name__ == '__main__':
     main()

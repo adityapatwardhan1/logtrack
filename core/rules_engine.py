@@ -315,7 +315,7 @@ def _zscore_alerts(cur, rule):
     if len(buckets) < baseline_windows + 1:
         return []
 
-    # Sort buckets by index: oldest → newest
+    # Sort buckets by index: oldest to newest
     sorted_indices = list(range(baseline_windows + 1))
     baseline_counts = [len(buckets[idx]) for idx in sorted_indices[:-1]]
     current_count = len(buckets[sorted_indices[-1]])
@@ -348,66 +348,55 @@ def _zscore_alerts(cur, rule):
 
 def run_ml_detection(con, model_path, threshold_path, feature_extractor_paths):
     """
-    Run trained ML model on logs fetched from DB connection `con`.
-    feature_extractor_paths is a dict with keys:
-      - 'tfidf', 'scaler', 'service_encoder', 'user_hasher'
+    Run trained ML model on logs fetched from DB connection 'con'.
+    feature_extractor_paths is a dict with keys 'tfidf', 'scaler', 'service_encoder', 'user_hasher'
     """
 
+    # No need to import if not running ML detection -> import here
     import pandas as pd
     import numpy as np
     import os
     import joblib
     from scipy.sparse import hstack
-    from sklearn.preprocessing import StandardScaler
-    from sklearn.feature_extraction.text import TfidfVectorizer, FeatureHasher
-    from sklearn.preprocessing import OneHotEncoder
 
     # Load logs from DB ordered by timestamp
     df_logs = pd.read_sql_query("SELECT timestamp, service, message, user FROM logs ORDER BY timestamp", con)
     con.close()
 
-    # === Derive features ===
+    # Derive features of block ID and timestamp
     df_logs['timestamp'] = pd.to_datetime(df_logs['timestamp'])
-
-    # Extract BlockId from message
     df_logs['BlockId'] = df_logs['message'].str.extract(r'(blk_-?\d+)')
 
-    # Load saved block count mapping
+    # Load saved block count mapping from training
     block_count_path = feature_extractor_paths['block_count']
     if not os.path.exists(block_count_path):
         raise FileNotFoundError(f"Missing block count mapping at {block_count_path}")
     block_counts = joblib.load(block_count_path)
-
-    # Apply consistent mapping
     df_logs['block_count'] = df_logs['BlockId'].map(block_counts).fillna(0).astype(int)
 
     # Timestamp features
     df_logs['hour'] = df_logs['timestamp'].dt.hour
     df_logs['dayofweek'] = df_logs['timestamp'].dt.dayofweek
 
-    # Load feature transformers
+    # Load feature transformers, transform features
     tfidf = joblib.load(feature_extractor_paths['tfidf'])
     scaler = joblib.load(feature_extractor_paths['scaler'])
     service_enc = joblib.load(feature_extractor_paths['service_encoder'])
     hasher = joblib.load(feature_extractor_paths['user_hasher'])
 
-    # Transform features
     X_text = tfidf.transform(df_logs['message'])
     X_service = service_enc.transform(df_logs[['service']])
     user_data = df_logs['user'].fillna("unknown").astype(str).apply(lambda x: [x]).tolist()
     X_user = hasher.transform(user_data)
 
-    # Numeric features to scale
     X_numeric = df_logs[['hour', 'dayofweek', 'block_count']].astype(np.float32).values
     X_numeric_scaled = scaler.transform(X_numeric)
 
-    # Combine all features
+    # Combine features
     X_combined = hstack([X_text, X_numeric_scaled, X_service, X_user])
 
-    # Load model
+    # Load model and threshold
     model = joblib.load(model_path)
-
-    # Load threshold
     with open(threshold_path, 'r') as threshold_file:
         threshold = float(threshold_file.readline().strip('\n'))
 

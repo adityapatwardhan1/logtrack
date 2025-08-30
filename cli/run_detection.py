@@ -1,16 +1,10 @@
 import sys
 import traceback
 import argparse
-import joblib
 import os
-import pandas as pd
-import sqlite3
 from sqlite3 import OperationalError
 from core.rules_engine import evaluate_rules
 from core.alert_manager import record_alert
-from loglizer import preprocessing
-from loglizer.dataloader import load_HDFS
-
 
 def main():
     """Main script for running detection"""

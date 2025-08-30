@@ -2,8 +2,6 @@
 
 import argparse
 import getpass
-import sqlite3
-import hashlib
 from auth.auth import verify_user
 from db.init_db import get_db_connection
 
