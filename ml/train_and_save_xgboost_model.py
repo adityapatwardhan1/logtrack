@@ -25,11 +25,9 @@ label_file = './log_data/HDFS/anomaly_label.csv'
 logs_df = pd.read_csv(log_file)
 labels_df = pd.read_csv(label_file)
 
-# Extract BlockId and merge
+# Extract BlockId, timestamp, IP
 logs_df['BlockId'] = logs_df['Content'].str.extract(r'(blk_-?\d+)')
 merged_df = pd.merge(logs_df, labels_df, on='BlockId', how='inner')
-
-# Timestamp and IP extraction
 merged_df['timestamp'] = pd.to_datetime(
     merged_df['Date'].astype(str) + merged_df['Time'].astype(str),
     format='%y%m%d%H%M%S', errors='coerce'
@@ -43,20 +41,12 @@ args = parse_args()
 data_df = merged_df[['timestamp', 'Component', 'Content', 'user', 'Label']].copy()
 data_df.columns = ['timestamp', 'service', 'message', 'user', 'label']
 
-# Extract BlockId from message if present (e.g., blk_-1234567)
+# Extract BlockId from message if present (e.g., blk_-1234567), and count frequency
 data_df['BlockId'] = data_df['message'].str.extract(r'(blk_-?\d+)')
-
-# Count frequency of each block
 block_counts = data_df['BlockId'].value_counts().to_dict()
-
-# Save block count mapping for consistency
 os.makedirs("saved_feature_extractor", exist_ok=True)
 joblib.dump(block_counts, "saved_feature_extractor/block_count_mapping.pkl")
-
-# Apply count as a feature
 data_df['block_count'] = data_df['BlockId'].map(block_counts).fillna(0).astype(int)
-
-# Count frequency of each block (only where block exists)
 block_counts = data_df['BlockId'].value_counts().to_dict()
 print("block_counts head =", data_df['BlockId'].value_counts().head(10))
 print("------------------------")
@@ -66,17 +56,13 @@ print("block_counts tail =", data_df['BlockId'].value_counts().tail(10))
 os.makedirs("saved_feature_extractor", exist_ok=True)
 joblib.dump(block_counts, "saved_feature_extractor/block_count_mapping.pkl")
 
-# Map count to each row, fill missing with 0
 if args.extract_block_id:
     data_df['block_count'] = data_df['BlockId'].map(block_counts).fillna(0).astype(int)
 else:
     data_df['block_count'] = 0
-    
-# Drop NA and remap labels
+
 data_df.dropna(subset=['message', 'label'], inplace=True)
 data_df.loc[:, 'label'] = data_df['label'].map({'Normal': 0, 'Anomaly': 1})
-
-# Timestamp features
 data_df.loc[:, 'hour'] = data_df['timestamp'].dt.hour
 data_df.loc[:, 'dayofweek'] = data_df['timestamp'].dt.dayofweek
 
@@ -107,9 +93,8 @@ X_train, X_test, y_train, y_test = train_test_split(
     X_combined, y, test_size=0.5, stratify=y, random_state=42
 )
 
-# Use class ratio instead of SMOTE
+# Fit the model, then find optimal threshold
 imbalance_ratio = sum(y_train == 0) / sum(y_train == 1)
-
 model = XGBClassifier(
     scale_pos_weight=imbalance_ratio,
     use_label_encoder=False,
@@ -118,7 +103,6 @@ model = XGBClassifier(
 )
 model.fit(X_train, y_train)
 
-# Threshold sweep
 best_f1, best_threshold, reports = 0, 0.5, {}
 y_proba = model.predict_proba(X_test)
 
@@ -134,7 +118,7 @@ for i in range(1, 20):
         best = i
         best_f1, best_threshold = f1, threshold
 
-# Save artifacts
+# Save relevant information and models
 os.makedirs("saved_models", exist_ok=True)
 os.makedirs("saved_feature_extractor", exist_ok=True)
 
@@ -147,7 +131,6 @@ joblib.dump(hasher, "saved_feature_extractor/user_hasher.pkl")
 with open("saved_models/threshold.txt", "w") as f:
     f.write(str(best_threshold))
 
-# Print final results
 print(f"\nBest Threshold: {best_threshold:.2f}")
 print(f"Best F1: {best_f1:.4f}")
 print("Best report:")
